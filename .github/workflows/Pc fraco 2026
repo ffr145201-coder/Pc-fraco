@@ -1,0 +1,159 @@
+name: Windows Cloud PC - AnyDesk
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Iniciando Windows
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    env:
+      PROCESSOR_COUNT: 8
+      OPENGL: "1"
+      MEMORY_GB: 16
+
+    steps:
+      # ==============================
+      # 1. Preparar o Windows
+      # ==============================
+      - name: Preparar sistema
+        shell: powershell
+        run: |
+          Write-Host "Preparando Windows..."
+
+          Write-Host "Processadores disponíveis:"
+          (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+
+          Write-Host "Memória disponível:"
+          [math]::Round(
+            (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB,
+            2
+          )
+
+      # ==============================
+      # 2. Baixar AnyDesk
+      # ==============================
+      - name: Baixar AnyDesk
+        shell: powershell
+        run: |
+          $url = "https://download.anydesk.com/AnyDesk.exe"
+          $path = "$env:TEMP\AnyDesk.exe"
+
+          Write-Host "Baixando AnyDesk..."
+          Invoke-WebRequest `
+            -Uri $url `
+            -OutFile $path `
+            -UseBasicParsing
+
+          if (!(Test-Path $path)) {
+            Write-Error "Não foi possível baixar o AnyDesk."
+            exit 1
+          }
+
+          Write-Host "Download concluído."
+
+      # ==============================
+      # 3. Iniciar AnyDesk
+      # ==============================
+      - name: Iniciar AnyDesk
+        shell: powershell
+        run: |
+          $path = "$env:TEMP\AnyDesk.exe"
+
+          Write-Host "Iniciando AnyDesk..."
+
+          Start-Process `
+            -FilePath $path `
+            -ArgumentList "--start-with-win" `
+            -WindowStyle Normal
+
+          Start-Sleep -Seconds 15
+
+          $process = Get-Process -Name "AnyDesk" `
+            -ErrorAction SilentlyContinue
+
+          if ($process) {
+            Write-Host "AnyDesk está em execução."
+          }
+          else {
+            Write-Error "AnyDesk não iniciou."
+            exit 1
+          }
+
+      # ==============================
+      # 4. Mostrar informações
+      # ==============================
+      - name: Verificar sistema
+        shell: powershell
+        run: |
+          Write-Host "=============================="
+          Write-Host " WINDOWS CLOUD RUNNER"
+          Write-Host "=============================="
+
+          Write-Host "Computador:"
+          $env:COMPUTERNAME
+
+          Write-Host ""
+          Write-Host "Usuário:"
+          $env:USERNAME
+
+          Write-Host ""
+          Write-Host "Windows:"
+          (Get-CimInstance Win32_OperatingSystem).Caption
+
+          Write-Host ""
+          Write-Host "AnyDesk:"
+          Get-Process -Name "AnyDesk" `
+            -ErrorAction SilentlyContinue
+
+      # ==============================
+      # 5. Monitorar AnyDesk
+      # ==============================
+      - name: Monitorar AnyDesk
+        shell: powershell
+        run: |
+          Write-Host "Monitoramento iniciado."
+
+          while ($true) {
+
+            $anydesk = Get-Process `
+              -Name "AnyDesk" `
+              -ErrorAction SilentlyContinue
+
+            if (-not $anydesk) {
+
+              Write-Host "AnyDesk não está rodando."
+              Write-Host "Tentando iniciar novamente..."
+
+              $path = "$env:TEMP\AnyDesk.exe"
+
+              if (Test-Path $path) {
+                Start-Process `
+                  -FilePath $path `
+                  -WindowStyle Normal
+
+                Start-Sleep -Seconds 10
+              }
+            }
+            else {
+              Write-Host "AnyDesk funcionando - $(Get-Date)"
+            }
+
+            Start-Sleep -Seconds 60
+          }
+
+      # ==============================
+      # 6. Limpeza
+      # ==============================
+      - name: Limpeza
+        if: always()
+        shell: powershell
+        run: |
+          Remove-Item `
+            "$env:TEMP\AnyDesk.exe" `
+            -Force `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "Limpeza finalizada."
