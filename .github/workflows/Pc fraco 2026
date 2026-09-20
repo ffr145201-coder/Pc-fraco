@@ -9,32 +9,21 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 360
 
-    env:
-      PROCESSOR_COUNT: 8
-      OPENGL: "1"
-      MEMORY_GB: 16
-
     steps:
-      # ==============================
-      # 1. Preparar o Windows
-      # ==============================
-      - name: Preparar sistema
+      - name: Verificar sistema
         shell: powershell
         run: |
-          Write-Host "Preparando Windows..."
+          Write-Host "=== WINDOWS CLOUD RUNNER ==="
+          Write-Host "Computador: $env:COMPUTERNAME"
+          Write-Host "Usuario: $env:USERNAME"
 
-          Write-Host "Processadores disponíveis:"
-          (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
+          $os = Get-CimInstance Win32_OperatingSystem
+          Write-Host "Windows: $($os.Caption)"
 
-          Write-Host "Memória disponível:"
-          [math]::Round(
-            (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB,
-            2
-          )
+          $cpu = Get-CimInstance Win32_ComputerSystem
+          Write-Host "Processadores: $($cpu.NumberOfLogicalProcessors)"
+          Write-Host "Memoria: $([math]::Round($cpu.TotalPhysicalMemory / 1GB, 2)) GB"
 
-      # ==============================
-      # 2. Baixar AnyDesk
-      # ==============================
       - name: Baixar AnyDesk
         shell: powershell
         run: |
@@ -42,21 +31,19 @@ jobs:
           $path = "$env:TEMP\AnyDesk.exe"
 
           Write-Host "Baixando AnyDesk..."
+
           Invoke-WebRequest `
             -Uri $url `
             -OutFile $path `
             -UseBasicParsing
 
-          if (!(Test-Path $path)) {
-            Write-Error "Não foi possível baixar o AnyDesk."
+          if (-not (Test-Path $path)) {
+            Write-Error "Falha ao baixar o AnyDesk."
             exit 1
           }
 
-          Write-Host "Download concluído."
+          Write-Host "AnyDesk baixado com sucesso."
 
-      # ==============================
-      # 3. Iniciar AnyDesk
-      # ==============================
       - name: Iniciar AnyDesk
         shell: powershell
         run: |
@@ -66,68 +53,37 @@ jobs:
 
           Start-Process `
             -FilePath $path `
-            -ArgumentList "--start-with-win" `
             -WindowStyle Normal
 
           Start-Sleep -Seconds 15
 
-          $process = Get-Process -Name "AnyDesk" `
+          $process = Get-Process `
+            -Name "AnyDesk" `
             -ErrorAction SilentlyContinue
 
           if ($process) {
-            Write-Host "AnyDesk está em execução."
+            Write-Host "AnyDesk iniciado."
           }
           else {
-            Write-Error "AnyDesk não iniciou."
+            Write-Error "AnyDesk nao iniciou."
             exit 1
           }
 
-      # ==============================
-      # 4. Mostrar informações
-      # ==============================
-      - name: Verificar sistema
-        shell: powershell
-        run: |
-          Write-Host "=============================="
-          Write-Host " WINDOWS CLOUD RUNNER"
-          Write-Host "=============================="
-
-          Write-Host "Computador:"
-          $env:COMPUTERNAME
-
-          Write-Host ""
-          Write-Host "Usuário:"
-          $env:USERNAME
-
-          Write-Host ""
-          Write-Host "Windows:"
-          (Get-CimInstance Win32_OperatingSystem).Caption
-
-          Write-Host ""
-          Write-Host "AnyDesk:"
-          Get-Process -Name "AnyDesk" `
-            -ErrorAction SilentlyContinue
-
-      # ==============================
-      # 5. Monitorar AnyDesk
-      # ==============================
       - name: Monitorar AnyDesk
         shell: powershell
         run: |
+          $path = "$env:TEMP\AnyDesk.exe"
+
           Write-Host "Monitoramento iniciado."
 
           while ($true) {
-
-            $anydesk = Get-Process `
+            $process = Get-Process `
               -Name "AnyDesk" `
               -ErrorAction SilentlyContinue
 
-            if (-not $anydesk) {
-
-              Write-Host "AnyDesk não está rodando."
+            if (-not $process) {
+              Write-Host "AnyDesk foi encerrado."
               Write-Host "Tentando iniciar novamente..."
-
-              $path = "$env:TEMP\AnyDesk.exe"
 
               if (Test-Path $path) {
                 Start-Process `
@@ -144,11 +100,8 @@ jobs:
             Start-Sleep -Seconds 60
           }
 
-      # ==============================
-      # 6. Limpeza
-      # ==============================
       - name: Limpeza
-        if: always()
+        if: ${{ always() }}
         shell: powershell
         run: |
           Remove-Item `
